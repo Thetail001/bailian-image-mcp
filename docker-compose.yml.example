@@ -1,12 +1,12 @@
 services:
   bailian-mcp:
     build:
-      context: ../..
-      dockerfile: src/gen_images/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
-      # 监听所有接口
-      - FASTMCP_HOST=0.0.0.0
+      # 监听所有接口 (FastMCP 默认可能是 localhost, 需要环境变量支持或代码调整)
+      # 注意：FastMCP 的 HTTP 模式参数可能需要确认
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
     restart: unless-stopped

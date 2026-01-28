@@ -1,23 +1,19 @@
 FROM python:3.11-slim
 
+# 设置 pip 镜像源 (可选)
 ARG PIP_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 
-# 设置工作目录
 WORKDIR /app
 
-# 安装uv
-RUN pip config set global.index-url $PIP_INDEX ; \
-    pip install uv
-
 # 复制项目文件
-COPY pyproject.toml uv.lock README.md ./
-COPY src/gen_images/bailian_mcpserver.py ./gen_images/bailian_mcpserver.py
+COPY pyproject.toml README.md bailian_mcpserver.py ./
 
-# 安装依赖
-RUN uv sync --frozen
+# 安装依赖和当前包
+RUN pip config set global.index-url $PIP_INDEX && \
+    pip install --no-cache-dir .
 
-# 暴露端口
+# 暴露端口 (虽然 SSE 主要是出站/标准输入输出，但在 HTTP 模式下需要)
 EXPOSE 8000
 
-# 启动命令
-CMD ["uv", "run", "gen_images/bailian_mcpserver.py", "--http"]
+# 启动命令 (使用 pyproject.toml 中定义的入口点)
+CMD ["bailian-mcp-server", "--http"]

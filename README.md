@@ -62,7 +62,7 @@ pip install -e .
 安装后，可以作为脚本运行：
 
 ```bash
-python -m src.gen_images.bailian_mcpserver
+python bailian_mcpserver.py
 ```
 
 ## 配置
@@ -185,13 +185,13 @@ export DASHSCOPE_API_KEY="your_api_key_here"
 ### Stdio 模式 (默认)
 
 ```bash
-python -m src.gen_images.bailian_mcpserver
+python bailian_mcpserver.py
 ```
 
 ### HTTP 模式 (团队服务)
 
 ```bash
-python -m src.gen_images.bailian_mcpserver --http
+python bailian_mcpserver.py --http
 ```
 
 ## 调试
@@ -199,7 +199,7 @@ python -m src.gen_images.bailian_mcpserver --http
 您可以使用 MCP 检查器来调试服务器：
 
 ```bash
-npx @modelcontextprotocol/inspector python -m src.gen_images.bailian_mcpserver
+npx @modelcontextprotocol/inspector python bailian_mcpserver.py
 ```
 
 ## 贡献
