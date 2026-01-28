@@ -14,8 +14,10 @@ from starlette.datastructures import Headers
 
 # 阿里云百炼baseurl
 BAILIAN_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
-# 统一的生图/修图 Endpoint
-GENERATION_ENDPOINT = f"{BAILIAN_BASE_URL}/services/aigc/multimodal-generation/generation"
+# 文生图 Endpoint (z-image, wan, qwen-image)
+T2I_ENDPOINT = f"{BAILIAN_BASE_URL}/services/aigc/text2image/image-synthesis"
+# 多模态/修图 Endpoint (qwen-image-edit)
+MULTIMODAL_ENDPOINT = f"{BAILIAN_BASE_URL}/services/aigc/multimodal-generation/generation"
 
 # 创建全局MCP实例
 mcp = FastMCP(name="阿里云百炼生图API MCP服务器")
@@ -137,7 +139,7 @@ async def generate_image(
     prompt: str,
     model: str = "z-image-turbo",
     size: str = "1024*1024",
-    prompt_extend: bool = True,
+    prompt_extend: Optional[bool] = None,
     watermark: bool = False,
     negative_prompt: Optional[str] = None,
 ) -> str:
@@ -145,63 +147,101 @@ async def generate_image(
     调用阿里云百炼生图API生成图像 (同步模式)
 
     Args:
-        prompt: 正向提示词，用来描述生成图像中期望包含的元素和视觉特点
-        model: 指定使用的图像生成模型，默认为 "z-image-turbo"。
-               可用模型包括: "qwen-image-max", "qwen-image-plus", "z-image-turbo", "wan2.6-image", "wan2.2-t2i-flash", "wan2.2-t2i-plus" 等。
-               详情请调用 list_image_models 工具查看。
-        size: 输出图像的分辨率，格式为宽*高。默认为 "1024*1024"。
-              不同模型支持的分辨率范围不同，请参考 list_image_models 的说明。
-        prompt_extend: 是否开启prompt智能改写
+        prompt: 正向提示词
+        model: 指定使用的图像生成模型，默认为 "z-image-turbo"
+        size: 输出图像的分辨率，默认 "1024*1024"
+        prompt_extend: 是否开启prompt智能改写 (部分模型可能不支持，建议仅在明确需要时设置)
         watermark: 是否添加水印标识
-        negative_prompt: 反向提示词，用来描述不希望在画面中看到的内容
+        negative_prompt: 反向提示词
 
     Returns:
-        包含图片URL的JSON格式字符串
+        包含图片URL的JSON格式字符串，或包含详细错误信息的JSON
     """
     try:
         api_key = get_api_key_from_context(ctx)
     except ValueError as e:
         return f"认证错误: {str(e)}"
 
+    # 确定 Endpoint 和 Payload 结构
+    # 策略:
+    # 1. z-image 系列: 使用 multimodal 接口，参数为 input.messages
+    # 2. wan 系列 / qwen-image 系列: 使用 text2image 接口，参数为 input.prompt
+    
+    endpoint = T2I_ENDPOINT
+    payload_type = "prompt"  # prompt or messages
+    
+    if model.startswith("z-image"):
+        endpoint = MULTIMODAL_ENDPOINT
+        payload_type = "messages"
+    
     # 构建请求数据
-    # 注意：所有推荐模型(Qwen/Z-Image/Wan)在 multimodal-generation 接口下通常支持 input.prompt 结构
     data = {
         "model": model,
-        "input": {
-            "prompt": prompt,
-        },
+        "input": {},
         "parameters": {
             "size": size,
-            "n": 1,  # 强制固定为1
-            "prompt_extend": prompt_extend,
+            "n": 1,
             "watermark": watermark,
         },
     }
 
-    # 添加反向提示词（如果提供）
+    if payload_type == "messages":
+        data["input"]["messages"] = [
+            {
+                "role": "user",
+                "content": [{"text": prompt}]
+            }
+        ]
+    else:
+        data["input"]["prompt"] = prompt
+
+    # 仅当显式提供 prompt_extend 时才添加到参数中
+    # 注意：Multimodal 接口通常支持 prompt_extend，但 T2I 的 wan 系列不支持
+    if prompt_extend is not None:
+        data["parameters"]["prompt_extend"] = prompt_extend
+
     if negative_prompt:
-        data["input"]["negative_prompt"] = negative_prompt
+        if payload_type == "messages":
+            # Multimodal 接口通常不支持直接的 input.negative_prompt，或者在 parameters 里
+            # 根据经验，z-image 这里的 negative_prompt 比较复杂，暂且尝试放在 parameters
+            # 或者 input.negative_prompt (如果文档支持)
+            # z-image 文档: parameters.negative_prompt (String)
+            data["parameters"]["negative_prompt"] = negative_prompt
+        else:
+            data["input"]["negative_prompt"] = negative_prompt
 
     try:
         async with get_async_client(api_key) as client:
-            response = await client.post(GENERATION_ENDPOINT, json=data)
-            response.raise_for_status()
+            response = await client.post(endpoint, json=data)
+            
+            # ... (后续处理保持不变) ...
+            if response.is_error:
+                error_detail = response.text
+                try:
+                    # 尝试解析 JSON 错误信息使其更易读
+                    error_json = response.json()
+                    if "code" in error_json and "message" in error_json:
+                        return json.dumps({
+                            "status": "error",
+                            "code": error_json.get("code"),
+                            "message": error_json.get("message"),
+                            "request_id": error_json.get("request_id")
+                        }, ensure_ascii=False)
+                except:
+                    pass
+                return f"API请求失败 (HTTP {response.status_code}): {error_detail}"
+
             result = response.json()
 
             # 同步接口直接返回结果
             if "output" in result:
                 # 提取图片URL
-                # 结构通常是 output: { results: [ { url: ... } ] } 或 output: { choices: [...] }
-                # 阿里云新版接口通常统一在 output 中，但具体字段可能因模型而异
-                
-                # 尝试通用提取逻辑
                 output = result["output"]
                 image_url = ""
                 
                 if "results" in output and len(output["results"]) > 0:
                     image_url = output["results"][0].get("url", "")
                 elif "choices" in output and len(output["choices"]) > 0:
-                     # 部分模型可能返回 choices 结构
                      content = output["choices"][0].get("message", {}).get("content", [])
                      if content and isinstance(content, list) and "image" in content[0]:
                          image_url = content[0]["image"]
@@ -211,23 +251,19 @@ async def generate_image(
                         {
                             "image_url": image_url,
                             "request_id": result.get("request_id", ""),
-                            # 保留一些元数据供调试
                             "model": model
                         },
                         ensure_ascii=False,
                         indent=2,
                     )
                 
-                # 如果没找到标准URL，返回完整 output 供调试
                 return f"未在响应中找到图片URL，完整响应: {json.dumps(result, ensure_ascii=False)}"
             
             else:
-                return f"API响应错误: {result}"
+                return f"API响应错误: {json.dumps(result, ensure_ascii=False)}"
 
     except httpx.RequestError as e:
-        return f"请求错误: {str(e)}"
-    except httpx.HTTPStatusError as e:
-        return f"HTTP错误: {e.response.status_code} - {e.response.text}"
+        return f"网络请求错误: {str(e)}"
     except Exception as e:
         return f"生成图像时发生未知错误: {str(e)}"
 
@@ -283,7 +319,7 @@ async def image_edit_generation(
 
     try:
         async with get_async_client(api_key) as client:
-            response = await client.post(GENERATION_ENDPOINT, json=data)
+            response = await client.post(MULTIMODAL_ENDPOINT, json=data)
             response.raise_for_status()
             result = response.json()
 
