@@ -103,7 +103,7 @@ def generate_image(
 
     # 构建请求数据
     data = {
-        "model": "qwen-image",
+        "model": "z-image-turbo",
         "input": {
             "prompt": prompt,
         },
