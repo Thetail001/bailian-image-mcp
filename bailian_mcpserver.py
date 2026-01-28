@@ -69,67 +69,26 @@ async def list_image_models() -> str:
     return """
 一、Qwen系列图像模型
 1. 图像生成模型
-
-qwen-image-max
-简介：Max系列旗舰模型，提升图像真实感与自然度，降低AI痕迹，擅长人物质感、纹理细节和文字渲染。
-输出规格：
-格式：PNG
-分辨率：支持可选分辨率（需通过size参数指定，如1024x1024）
-图像数量：固定1张
-特性：与qwen-image-max-2025-12-30能力相同。
-
-qwen-image-plus
-简介：Plus系列模型，擅长复杂文字渲染（如海报、对联），支持多样艺术风格。
-输出规格：
-格式：PNG
-分辨率：支持可选分辨率（需通过size参数指定）
-图像数量：固定1张
+qwen-image-max / qwen-image-plus: 旗舰级模型，擅长细节和文字渲染。固定输出1张。
 
 2. 图像编辑模型
+qwen-image-edit-plus: 支持单图编辑和多图融合。
 
-qwen-image-edit-plus-2025-12-15
-简介：支持单图编辑和多图融合，输出1–6张图像，支持自定义分辨率和提示词智能改写。
-输出规格：
-格式：PNG
-分辨率：可指定（如1920x1080），默认接近1024x1024（基于输入图宽高比）
+二、Z-Image系列 (文生图)
+z-image-turbo: 轻量级极速模型，支持中英双语。
+- 接口类型: Multimodal Generation
+- 分辨率限制: 总像素范围 [512*512, 2048*2048]
+- 推荐分辨率 (效果最佳):
+  * 1:1 : 1024*1024, 1280*1280, 1536*1536
+  * 2:3 : 832*1248, 1024*1536, 1248*1872
+  * 3:2 : 1248*832, 1536*1024, 1872*1248
+  * 9:16: 720*1280, 864*1536, 1152*2048
+  * 16:9: 1280*720, 1536*864, 2048*1152
 
-qwen-image-edit-plus-2025-10-30
-简介：与上述型号功能相同，但版本日期不同。
-
-qwen-image-edit
-简介：基础编辑模型，仅支持输出1张图像，不支持自定义分辨率。
-输出规格：
-格式：PNG
-分辨率：默认与输入图一致（不可指定）
-
-二、Z-Image系列
-1. 文生图模型
-
-z-image-turbo
-简介：轻量级模型，快速生成高质量图像，支持中英双语渲染，擅长复杂语义理解与多风格题材。
-输出规格：
-格式：PNG
-分辨率：总像素范围512x512至2048x2048（需通过size参数指定宽高比）
-图像数量：固定1张
-
-三、Wan系列
-1. 图像生成与编辑模型
-
-wan2.6-image
-简介：支持图像编辑和图文混排输出，适用于多图融合与风格迁移。
-输出规格：
-格式：PNG
-分辨率：需通过size参数指定（如1280x1280）
-
-wan2.2-t2i-flash
-简介：极速版文生图模型，兼顾创意性与速度，支持自定义分辨率。
-输出规格：
-格式：PNG
-分辨率：支持512x512至1440x1440的任意宽高组合
-
-wan2.2-t2i-plus
-简介：专业版文生图模型，优化创意性、稳定性和写实细节。
-输出规格：与wan2.2-t2i-flash类似，但性能更优。
+三、Wan系列 (通义万相)
+wan2.2-t2i-plus / wan2.2-t2i-flash: 专业级/极速级文生图模型。
+- 接口类型: Text2Image Synthesis
+- 分辨率: 支持 512x512 至 1440x1440 任意组合。
 """
 
 
@@ -247,15 +206,16 @@ async def generate_image(
                          image_url = content[0]["image"]
                 
                 if image_url:
-                    return json.dumps(
-                        {
-                            "image_url": image_url,
-                            "request_id": result.get("request_id", ""),
-                            "model": model
-                        },
-                        ensure_ascii=False,
-                        indent=2,
-                    )
+                    response_data = {
+                        "image_url": image_url,
+                        "request_id": result.get("request_id", ""),
+                        "model": model
+                    }
+                    # 如果启用了 prompt_extend，尝试返回思考过程
+                    if "reasoning_content" in output.get("choices", [{}])[0].get("message", {}):
+                        response_data["reasoning"] = output["choices"][0]["message"]["reasoning_content"]
+                    
+                    return json.dumps(response_data, ensure_ascii=False, indent=2)
                 
                 return f"未在响应中找到图片URL，完整响应: {json.dumps(result, ensure_ascii=False)}"
             
