@@ -211,11 +211,19 @@ async def generate_image(
                         "request_id": result.get("request_id", ""),
                         "model": model
                     }
-                    # 如果启用了 prompt_extend，尝试返回思考过程
                     if "reasoning_content" in output.get("choices", [{}])[0].get("message", {}):
                         response_data["reasoning"] = output["choices"][0]["message"]["reasoning_content"]
                     
-                    return json.dumps(response_data, ensure_ascii=False, indent=2)
+                    # 使用 Markdown 图片格式 + 显式指令
+                    # 这里的指令是给 LLM 看的，要求它不要自作聪明地修改 URL
+                    return f"""![Generated Image]({image_url})
+
+**注意**：上图链接包含必要的签名参数，请直接原样展示，**不要修改链接中的任何字符**，否则会导致图片无法显示。
+
+调试信息:
+{json.dumps(response_data, ensure_ascii=False, indent=2)}"""
+                
+                return f"未在响应中找到图片URL，完整响应: {json.dumps(result, ensure_ascii=False)}"
                 
                 return f"未在响应中找到图片URL，完整响应: {json.dumps(result, ensure_ascii=False)}"
             
@@ -285,14 +293,12 @@ async def image_edit_generation(
 
             if "output" in result and "choices" in result["output"]:
                 image_url = result["output"]["choices"][0]["message"]["content"][0]["image"]
-                return json.dumps(
-                    {
-                        "image_url": image_url,
-                        "request_id": result.get("request_id", ""),
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
+                
+                return f"""![Edited Image]({image_url})
+
+**注意**：请直接原样展示上方图片链接，**不要修改 URL 中的任何参数**（如 Signature 等），否则图片将无法加载。
+
+Request ID: {result.get("request_id", "")}"""
             else:
                 return f"API响应错误: {result}"
 
