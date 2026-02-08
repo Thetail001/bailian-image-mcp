@@ -5,7 +5,7 @@ import sys
 from unittest.mock import MagicMock
 
 # 设置 API Key
-os.environ["DASHSCOPE_API_KEY"] = "sk-8ec4cbe0cd9d4ab1a1a81a49fc032ee9"
+os.environ["DASHSCOPE_API_KEY"] = ""
 
 # 确保导入根目录模块
 sys.path.insert(0, os.getcwd())
