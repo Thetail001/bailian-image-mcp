@@ -42,7 +42,7 @@ if [ -d "$INSTALL_DIR" ]; then
             echo -e "当前版本: $CURRENT_VER"
             
             # 执行升级
-            $INSTALL_DIR/venv/bin/pip install --upgrade $PACKAGE_NAME
+            $INSTALL_DIR/venv/bin/pip install -i https://pypi.org/simple --upgrade $PACKAGE_NAME
             
             NEW_VER=$($INSTALL_DIR/venv/bin/pip show $PACKAGE_NAME | grep Version | awk '{print $2}')
             
@@ -96,7 +96,7 @@ if [ ! -d "venv" ]; then
 fi
 
 echo -e "${YELLOW}--- 安装/升级程序包 ---${NC}"
-./venv/bin/pip install --upgrade $PACKAGE_NAME uvicorn
+./venv/bin/pip install -i https://pypi.org/simple --upgrade $PACKAGE_NAME uvicorn
 
 # 5. 创建环境变量文件
 cat <<EOF > .env
