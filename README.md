@@ -6,6 +6,7 @@
 - **全异步架构**：完美适配 MCP SSE 协议，不会阻塞服务器心跳。
 - **直接返回结果**：无需二次查询，生图请求直接返回图片 URL。
 - **多模型支持**：支持 Qwen-Image, Wan (万相) 等最新模型。
+- **安全保护**：支持 Bearer Token 鉴权，保护 HTTP/SSE 服务不被非法访问。
 
 ## 可用工具
 
@@ -45,10 +46,18 @@ bailian-mcp-server
 ## 配置指南
 
 ### 身份验证
-您需要阿里云百炼平台的 API 密钥。
-```bash
-export DASHSCOPE_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
-```
+
+1. **阿里云 API 密钥** (必需): 
+   用于调用百炼平台生图能力。
+   ```bash
+   export DASHSCOPE_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+   ```
+
+2. **MCP 访问密钥** (可选，建议在 HTTP 模式下开启):
+   用于保护 MCP 服务本身的安全性。开启后，客户端需在 Header 中提供 `Authorization: Bearer <token>`。
+   ```bash
+   export MCP_ACCESS_TOKEN="your_custom_secret_token"
+   ```
 
 ### 1. Claude.app 配置 (桌面版)
 编辑配置文件 (macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows: `%APPDATA%\Claude\claude_desktop_config.json`)：
@@ -125,12 +134,31 @@ export DASHSCOPE_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
 # 安装依赖
 pip install -e .
 
-# Stdio 模式运行
+# 1. Stdio 模式运行 (默认，本地使用)
 python bailian_mcpserver.py
 
-# HTTP/SSE 模式运行 (用于远程部署调试)
-python bailian_mcpserver.py --http
+# 2. HTTP/SSE 模式运行 (用于服务器远程部署)
+# 如果设置了 MCP_ACCESS_TOKEN，服务将受到鉴权保护
+python bailian_mcpserver.py --http --port 8000
 ```
+
+### 远程连接配置
+当您在服务器部署并开启鉴权后，其他 MCP 客户端连接时需要配置 Header：
+
+```json
+{
+  "mcpServers": {
+    "bailian-image-remote": {
+      "command": "curl",
+      "args": [
+        "-H", "Authorization: Bearer your_custom_secret_token",
+        "http://your-server-ip:8000/mcp"
+      ]
+    }
+  }
+}
+```
+*(注意：具体客户端的配置方式可能有所不同，部分网关支持在 URL 后接参数或通过特定的环境变量传递 Token)*
 
 ### 调试
 使用 MCP Inspector 进行调试：

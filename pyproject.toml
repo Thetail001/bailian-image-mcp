@@ -1,6 +1,6 @@
 [project]
 name = "bailian-imagegen-mcp-edited"
-version = "0.1.6"
+version = "0.1.7"
 description = "Aliyun Bailian Image Generation MCP Server"
 readme = "README.md"
 requires-python = ">=3.10"

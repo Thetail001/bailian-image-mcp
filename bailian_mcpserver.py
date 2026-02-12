@@ -11,6 +11,8 @@ from typing import Optional
 import httpx
 from mcp.server.fastmcp import FastMCP, Context
 from starlette.datastructures import Headers
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 # 阿里云百炼baseurl
 BAILIAN_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
@@ -21,6 +23,36 @@ MULTIMODAL_ENDPOINT = f"{BAILIAN_BASE_URL}/services/aigc/multimodal-generation/g
 
 # 创建全局MCP实例
 mcp = FastMCP(name="阿里云百炼生图API MCP服务器")
+
+
+class MCPAuthMiddleware(BaseHTTPMiddleware):
+    """
+    MCP服务鉴权中间件
+    用于保护 HTTP/SSE 接口，防止未授权访问
+    """
+    def __init__(self, app, access_token: str):
+        super().__init__(app)
+        self.access_token = access_token
+
+    async def dispatch(self, request, call_next):
+        # 允许 OPTIONS 请求以支持 CORS
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
+        auth_header = request.headers.get("Authorization")
+        expected = f"Bearer {self.access_token}"
+
+        if not auth_header or auth_header != expected:
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "status": "error",
+                    "message": "Unauthorized: Invalid or missing MCP Access Token",
+                    "hint": "Please provide 'Authorization: Bearer <token>' header"
+                }
+            )
+        
+        return await call_next(request)
 
 
 def get_api_key_from_context(ctx: Context) -> str:
@@ -312,13 +344,33 @@ Request ID: {result.get("request_id", "")}"""
 
 # 支持两种模式的启动脚本
 def main():
+    access_token = os.getenv("MCP_ACCESS_TOKEN")
+    
+    # 提取端口参数 (兼容 --port 8000)
+    port = 8000
+    if "--port" in sys.argv:
+        try:
+            port_idx = sys.argv.index("--port")
+            port = int(sys.argv[port_idx + 1])
+        except (ValueError, IndexError):
+            pass
+
     if "--http" in sys.argv:
-        # stdio 模式下不要打印到 stdout
-        print("启动HTTP模式（团队服务模式）") 
-        mcp.run(transport="streamable-http")
+        if access_token:
+            print(f"[*] 启动HTTP模式（带 Bearer Token 鉴权保护），端口: {port}", file=sys.stderr)
+            
+            # 获取 Starlette app 并添加中间件
+            app = mcp.streamable_http_app()
+            app.add_middleware(MCPAuthMiddleware, access_token=access_token)
+            
+            import uvicorn
+            uvicorn.run(app, host="0.0.0.0", port=port)
+        else:
+            print(f"[*] 启动HTTP模式（未设置 MCP_ACCESS_TOKEN，无鉴权保护），端口: {port}", file=sys.stderr)
+            mcp.run(transport="streamable-http", port=port)
     else:
-        # 打印到 stderr 是安全的
-        print("启动stdio模式（个人使用模式）", file=sys.stderr)
+        # stdio 模式下，print 到 stderr
+        print("[*] 启动stdio模式（个人使用模式）", file=sys.stderr)
         mcp.run()
 
 if __name__ == "__main__":
