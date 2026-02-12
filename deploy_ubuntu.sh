@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # 阿里云百炼 MCP 服务 Ubuntu 一键部署/更新脚本
-# 适用系统: Ubuntu 20.04+, Debian 11+
-# 注意: 本服务依赖 mcp SDK, 需要 Python 3.10+
+# 兼容性: Ubuntu 18.04+, Debian 10+
+# 特点: 自动通过 uv 管理 Python 3.10+ 环境，无视系统 Python 版本过低问题
 
 set -e
 
@@ -17,7 +17,7 @@ SERVICE_NAME="bailian-mcp"
 LOG_FILE="/var/log/bailian-mcp.log"
 PACKAGE_NAME="bailian-imagegen-mcp-edited"
 
-echo -e "${GREEN}=== 阿里云百炼 MCP 服务部署/更新工具 ===${NC}"
+echo -e "${GREEN}=== 阿里云百炼 MCP 服务部署/更新工具 (UV 托管版) ===${NC}"
 
 # 1. 权限检查
 if [ "$EUID" -ne 0 ]; then 
@@ -25,94 +25,63 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 2. Python 版本检查与处理
-echo -e "${YELLOW}--- 检查环境依赖 ---${NC}"
-CHECK_PYTHON=$(python3 -c 'import sys; print(sys.version_info >= (3, 10))' 2>/dev/null || echo "False")
+# 2. 准备工作目录
+mkdir -p $INSTALL_DIR
+cd $INSTALL_DIR
 
-PY_CMD="python3"
-
-if [ "$CHECK_PYTHON" == "False" ]; then
-    echo -e "${YELLOW}检测到系统 Python 版本低于 3.10，正在尝试寻找/安装 Python 3.10...${NC}"
-    if command -v python3.10 >/dev/null 2>&1; then
-        PY_CMD="python3.10"
-    else
-        echo -e "${YELLOW}正在通过 deadsnakes PPA 安装 Python 3.10...${NC}"
-        apt-get update
-        apt-get install -y software-properties-common
-        add-apt-repository -y ppa:deadsnakes/ppa
-        apt-get update
-        apt-get install -y python3.10 python3.10-venv python3.10-distutils
-        PY_CMD="python3.10"
-    fi
+# 3. 安装/检测 UV
+echo -e "${YELLOW}--- 检查环境引擎 (uv) ---${NC}"
+if ! command -v uv >/dev/null 2>&1 && [ ! -f "./uv" ]; then
+    echo -e "${YELLOW}正在安装 uv 引擎以管理 Python 环境...${NC}"
+    # 下载 uv 到安装目录
+    curl -LsSf https://astral.sh/uv/install.sh | BINDIR=$INSTALL_DIR sh
 fi
 
-echo -e "${GREEN}使用 Python 解释器: $($PY_CMD --version)${NC}"
+UV_BIN="./uv"
+if command -v uv >/dev/null 2>&1; then
+    UV_BIN="uv"
+fi
 
-# 3. 检测现有安装
-if [ -d "$INSTALL_DIR" ]; then
-    echo -e "${YELLOW}检测到已安装的服务目录: $INSTALL_DIR${NC}"
-    echo -e "请选择操作:"
-    echo -e "1) 检查更新并重启服务 (保持现有配置)"
-    echo -e "2) 重新配置并覆盖安装 (修改 API Key/端口等)"
+# 4. 检测现有安装
+if [ -f ".env" ] && [ -d "venv" ]; then
+    echo -e "${YELLOW}检测到已安装的服务。${NC}"
+    echo -e "1) 检查更新并重启"
+    echo -e "2) 重新配置并重装"
     echo -e "3) 退出"
-    read -p "请输入序号 [1-3]: " choice
-
+    read -p "选择操作 [1-3]: " choice
     case $choice in
         1)
-            echo -e "${YELLOW}--- 正在检查版本更新... ---${NC}"
-            # 确保 venv 存在
-            if [ ! -f "$INSTALL_DIR/venv/bin/pip" ]; then
-                echo -e "${RED}虚拟环境损坏，请选择 2 重新安装。${NC}"
-                exit 1
-            fi
-            # 执行升级
-            $INSTALL_DIR/venv/bin/pip install -i https://pypi.org/simple --upgrade $PACKAGE_NAME uvicorn
-            NEW_VER=$($INSTALL_DIR/venv/bin/pip show $PACKAGE_NAME | grep Version | awk '{print $2}')
-            echo -e "${GREEN}当前程序版本: $NEW_VER${NC}"
-            echo -e "${YELLOW}--- 重启服务 ---${NC}"
+            echo -e "${YELLOW}--- 正在检查更新... ---${NC}"
+            $UV_BIN pip install -i https://pypi.org/simple --upgrade $PACKAGE_NAME
             systemctl restart $SERVICE_NAME
-            echo -e "${GREEN}服务已重启。${NC}"
+            echo -e "${GREEN}升级完成并已重启。${NC}"
             exit 0
             ;;
         2)
-            echo -e "${YELLOW}进入重新配置模式...${NC}"
+            echo -e "${YELLOW}重新配置...${NC}"
             ;;
         *)
-            echo "操作取消。"
             exit 0
             ;;
     esac
 fi
 
-# 4. 交互式配置
+# 5. 交互式配置
 echo -e "\n${YELLOW}--- 配置阶段 ---${NC}"
 read -p "请输入阿里云百炼 API Key (DASHSCOPE_API_KEY): " DASH_KEY
-while [ -z "$DASH_KEY" ]; do
-    read -p "API Key 不能为空，请重新输入: " DASH_KEY
-done
-
-read -p "请输入您自定义的 MCP 访问 Token (用于客户端接入鉴权): " ACCESS_TOKEN
-while [ -z "$ACCESS_TOKEN" ]; do
-    read -p "Token 不能为空，请重新输入: " ACCESS_TOKEN
-done
-
-read -p "请输入服务运行端口 [默认 8000]: " S_PORT
+read -p "请输入自定义 MCP 访问 Token: " ACCESS_TOKEN
+read -p "请输入运行端口 [默认 8000]: " S_PORT
 S_PORT=${S_PORT:-8000}
 
-# 5. 创建目录并准备环境
-echo -e "${YELLOW}--- 准备工作目录: $INSTALL_DIR ---${NC}"
-mkdir -p $INSTALL_DIR
-cd $INSTALL_DIR
+# 6. 使用 UV 创建 Python 3.10 虚拟环境
+echo -e "${YELLOW}--- 正在构建隔离的 Python 3.10+ 环境 (通过 uv) ---${NC}"
+# uv 会自动下载合适的 Python 版本，不依赖系统 apt
+$UV_BIN venv --python 3.10 venv
 
-# 重新创建虚拟环境以确保 Python 版本正确
-echo -e "${YELLOW}--- 创建 Python 虚拟环境 (3.10+) ---${NC}"
-rm -rf venv
-$PY_CMD -m venv venv
+echo -e "${YELLOW}--- 安装程序包 ---${NC}"
+$UV_BIN pip install -i https://pypi.org/simple $PACKAGE_NAME uvicorn
 
-echo -e "${YELLOW}--- 安装程序包 (来自 PyPI) ---${NC}"
-./venv/bin/pip install -i https://pypi.org/simple --upgrade $PACKAGE_NAME uvicorn
-
-# 6. 创建环境变量文件
+# 7. 写入配置
 cat <<EOF > .env
 DASHSCOPE_API_KEY=$DASH_KEY
 MCP_ACCESS_TOKEN=$ACCESS_TOKEN
@@ -120,7 +89,7 @@ PORT=$S_PORT
 EOF
 chmod 600 .env
 
-# 7. 创建 Systemd 服务文件
+# 8. 创建 Systemd 服务
 echo -e "${YELLOW}--- 配置 Systemd 服务 ---${NC}"
 cat <<EOF > /etc/systemd/system/$SERVICE_NAME.service
 [Unit]
@@ -132,6 +101,7 @@ Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
 EnvironmentFile=$INSTALL_DIR/.env
+# 使用 venv 中的 python 直接运行
 ExecStart=$INSTALL_DIR/venv/bin/bailian-mcp-server --http --port \$PORT
 Restart=always
 RestartSec=10
@@ -142,33 +112,27 @@ StandardError=append:$LOG_FILE
 WantedBy=multi-user.target
 EOF
 
-# 8. 配置日志轮转
-echo -e "${YELLOW}--- 配置日志限额 (10MB x 5) ---${NC}"
-apt-get install -y logrotate
+# 9. 日志管理
+apt-get install -y logrotate >/dev/null 2>&1 || true
 cat <<EOF > /etc/logrotate.d/$SERVICE_NAME
 $LOG_FILE {
     size 10M
     rotate 5
     copytruncate
     compress
-    delaycompress
     missingok
     notifempty
 }
 EOF
 
-# 9. 启动服务
-echo -e "${YELLOW}--- 启动服务 ---${NC}"
-touch $LOG_FILE
-chmod 644 $LOG_FILE
+# 10. 启动
 systemctl daemon-reload
 systemctl enable $SERVICE_NAME
 systemctl restart $SERVICE_NAME
 
 echo -e "\n${GREEN}==============================================${NC}"
-echo -e "${GREEN}安装成功!${NC}"
-echo -e "Python 版本: $($PY_CMD --version)"
-echo -e "服务状态: ${YELLOW}systemctl status $SERVICE_NAME${NC}"
+echo -e "${GREEN}部署成功!${NC}"
+echo -e "环境运行在: $($INSTALL_DIR/venv/bin/python --version)"
 echo -e "服务地址: ${YELLOW}http://$(hostname -I | awk '{print $1}'):$S_PORT/mcp${NC}"
-echo -e "访问 Token: ${YELLOW}$ACCESS_TOKEN${NC}"
+echo -e "实时日志: ${YELLOW}tail -f $LOG_FILE${NC}"
 echo -e "${GREEN}==============================================${NC}"
