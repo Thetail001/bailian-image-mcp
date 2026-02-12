@@ -52,7 +52,7 @@ class MCPAuthMiddleware(BaseHTTPMiddleware):
 # --- 4. 核心实例与安全设置 ---
 mcp = FastMCP(
     name="Aliyun Bailian Image",
-    description="Aliyun Bailian Image Generation/Editing via MCP"
+    instructions="Aliyun Bailian Image Generation/Editing via MCP"
 )
 
 # 修复 421 Misdirected Request 核心逻辑
