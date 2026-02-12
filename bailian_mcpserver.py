@@ -185,10 +185,10 @@ def main():
             port = int(sys.argv[i+1])
 
     if "--http" in sys.argv:
-        # 修复 421 Misdirected Request: 允许所有 Host 访问
-        allowed = os.getenv("MCP_ALLOWED_HOSTS", "*:*")
-        mcp.settings.transport_security.allowed_hosts = allowed.split(",")
-        logger.info(f"Allowed hosts set to: {mcp.settings.transport_security.allowed_hosts}")
+        # 彻底修复 421 Misdirected Request: 禁用 DNS Rebinding 保护
+        # 这样就不再校验 Host 头部，适合公网 IP 或动态域名访问
+        mcp.settings.transport_security.enable_dns_rebinding_protection = False
+        logger.info("DNS rebinding protection disabled")
 
         app = mcp.streamable_http_app()
         
