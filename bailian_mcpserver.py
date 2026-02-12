@@ -38,8 +38,8 @@ class MCPAuthMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
 
-        # 仅对 MCP 核心路径进行拦截
-        if request.url.path.startswith("/mcp"):
+        # 拦截 SSE 建立连接和消息发送路径
+        if request.url.path in ["/sse", "/messages", "/messages/"]:
             auth_header = request.headers.get("Authorization")
             if auth_header != f"Bearer {self.access_token}":
                 logger.warning(f"Unauthorized access from {request.client.host}")
@@ -186,11 +186,11 @@ def main():
 
     if "--http" in sys.argv:
         # 彻底修复 421 Misdirected Request: 禁用 DNS Rebinding 保护
-        # 这样就不再校验 Host 头部，适合公网 IP 或动态域名访问
         mcp.settings.transport_security.enable_dns_rebinding_protection = False
         logger.info("DNS rebinding protection disabled")
 
-        app = mcp.streamable_http_app()
+        # 使用 sse_app 代替 streamable_http_app，路径更标准 (/sse)
+        app = mcp.sse_app()
         
         access_token = os.getenv("MCP_ACCESS_TOKEN")
         if access_token:
@@ -200,7 +200,7 @@ def main():
             logger.warning("No MCP_ACCESS_TOKEN set. Service is UNPROTECTED.")
 
         logger.info(f"Serving MCP-over-SSE on port {port}")
-        logger.info(f"SSE endpoint: http://0.0.0.0:{port}/mcp")
+        logger.info(f"SSE endpoint: http://0.0.0.0:{port}/sse")
         uvicorn.run(app, host="0.0.0.0", port=port)
     else:
         logger.info("Serving MCP-over-Stdio")
