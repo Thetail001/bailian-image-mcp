@@ -55,10 +55,6 @@ mcp = FastMCP(
     instructions="Aliyun Bailian Image Generation/Editing via MCP"
 )
 
-# 修复 421 Misdirected Request 核心逻辑
-# 允许外部 IP 访问，防止 Host 头部校验失败
-mcp.settings.transport_security.allowed_hosts = os.getenv("MCP_ALLOWED_HOSTS", "*").split(",")
-
 # --- 5. 辅助逻辑 ---
 def get_api_key() -> str:
     key = os.getenv("DASHSCOPE_API_KEY")
@@ -189,6 +185,11 @@ def main():
             port = int(sys.argv[i+1])
 
     if "--http" in sys.argv:
+        # 修复 421 Misdirected Request: 允许所有 Host 访问
+        allowed = os.getenv("MCP_ALLOWED_HOSTS", "*:*")
+        mcp.settings.transport_security.allowed_hosts = allowed.split(",")
+        logger.info(f"Allowed hosts set to: {mcp.settings.transport_security.allowed_hosts}")
+
         app = mcp.streamable_http_app()
         
         access_token = os.getenv("MCP_ACCESS_TOKEN")
