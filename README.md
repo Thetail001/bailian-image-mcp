@@ -1,170 +1,81 @@
 # 阿里云百炼生图 MCP 服务器
 
-一个 Model Context Protocol 服务器，提供阿里云百炼平台的图像生成和编辑功能。该服务器使LLM能够调用阿里云百炼API来生成、编辑图像，支持多种图像分辨率、多模型选择（Qwen, Z-Image, Wan系列）和自定义参数。
+一个 Model Context Protocol (MCP) 服务器，提供阿里云百炼平台的图像生成和编辑功能。该服务器支持 Stdio 和 HTTP/SSE 两种传输协议。
 
-**最新功能：**
-- **全异步架构**：完美适配 MCP SSE 协议，不会阻塞服务器心跳。
-- **直接返回结果**：无需二次查询，生图请求直接返回图片 URL。
-- **多模型支持**：支持 Qwen-Image, Wan (万相) 等最新模型。
-- **安全保护**：支持 Bearer Token 鉴权，保护 HTTP/SSE 服务不被非法访问。
+**最新更新 (v0.2.5)：**
+- **架构切换**：采用标准 `sse_app` 架构，兼容性更强。
+- **421 修复**：默认禁用 DNS Rebinding 保护，支持公网 IP/域名远程部署。
+- **路径统一**：HTTP/SSE 连接路径统一为 `/sse`。
+- **安全增强**：修复了 Bearer Auth 中间件对 SSE 路径的拦截逻辑。
 
 ## 可用工具
 
-### `generate_image` - 生成图像 (同步返回)
-使用文本提示词生成图像，请求等待生成完成后直接返回图片链接。
-*   **必需**: `prompt`
-*   **可选**: `model` (默认 z-image-turbo), `size` (默认 1024*1024), `prompt_extend`, `watermark`, `negative_prompt`
+### `generate_image`
+使用文本提示词生成图像。
+*   **必需参数**: `prompt`
+*   **可选参数**: `model` (默认 `z-image-turbo`), `size`, `prompt_extend`, `watermark`, `negative_prompt`
 
-### `image_edit_generation` - 编辑图像 (同步返回)
-基于现有图像和文本提示生成新的编辑版本。
-*   **必需**: `prompt`, `image` (URL)
-*   **可选**: `model` (默认 qwen-image-edit-plus), `negative_prompt`
+### `image_edit_generation`
+基于现有图像和文本提示进行编辑。
+*   **必需参数**: `prompt`, `image` (URL)
 
-### `list_image_models` - 获取模型列表
-返回支持的图像模型列表及其详细说明（包括简介、分辨率限制等）。
+### `list_image_models`
+获取所有支持的模型列表及详细说明。
 
-## 快速开始
+## 部署与运行
 
-### 方式 1: 使用 uvx 直接运行 (推荐)
-如果已安装 `uv`，无需下载代码即可运行：
-
+### 1. Stdio 模式 (用于 Claude Desktop 等本地客户端)
+直接通过 `uvx` 运行：
 ```bash
-# 需设置环境变量 DASHSCOPE_API_KEY
-uvx --from bailian-imagegen-mcp-edited bailian-mcp-server
+export DASHSCOPE_API_KEY="您的API_KEY"
+uvx bailian-imagegen-mcp-edited
 ```
 
-### 方式 2: 本地安装运行
+### 2. HTTP/SSE 模式 (远程服务器部署)
+适用于将 MCP 服务器部署在 Linux 服务器上供远程连接。
 
 ```bash
-# 安装包
+# 安装
 pip install bailian-imagegen-mcp-edited
 
-# 运行
-bailian-mcp-server
+# 运行 (默认端口 8000)
+export DASHSCOPE_API_KEY="您的API_KEY"
+export MCP_ACCESS_TOKEN="您的自定义Token"
+bailian-mcp-server --http --port 8000
 ```
 
-## 配置指南
+**连接信息：**
+- **连接地址**: `http://<SERVER_IP>:<PORT>/sse`
+- **鉴权方式**: HTTP Header 需包含 `Authorization: Bearer <MCP_ACCESS_TOKEN>`
 
-### 身份验证
+## 客户端配置示例
 
-1. **阿里云 API 密钥** (必需): 
-   用于调用百炼平台生图能力。
-   ```bash
-   export DASHSCOPE_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
-   ```
+### 远程连接配置 (适用于 Roo Code / Cline / Cursor 等)
 
-2. **MCP 访问密钥** (可选，建议在 HTTP 模式下开启):
-   用于保护 MCP 服务本身的安全性。开启后，客户端需在 Header 中提供 `Authorization: Bearer <token>`。
-   ```bash
-   export MCP_ACCESS_TOKEN="your_custom_secret_token"
-   ```
-
-### 1. Claude.app 配置 (桌面版)
-编辑配置文件 (macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows: `%APPDATA%\Claude\claude_desktop_config.json`)：
-
-```json
-{
-  "mcpServers": {
-    "bailian-image": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "bailian-imagegen-mcp-edited",
-        "bailian-mcp-server"
-      ],
-      "env": {
-        "DASHSCOPE_API_KEY": "sk-your-real-api-key"
-      }
-    }
-  }
-}
-```
-
-### 2. 魔搭社区 (ModelScope) 部署配置
-如果您在魔搭 MCP 广场创建服务，请使用以下配置：
-
-*   **托管类型**: 可托管部署
-*   **服务配置**:
-    ```json
-    {
-      "mcpServers": {
-        "bailian-image": {
-          "command": "uvx",
-          "args": [
-            "--from",
-            "bailian-imagegen-mcp-edited",
-            "bailian-mcp-server"
-          ],
-          "env": {
-            "DASHSCOPE_API_KEY": "sk-your-real-api-key"
-          }
-        }
-      }
-    }
-    ```
-
-### 3. VS Code 配置 (Cline/Roo 等插件)
-在项目根目录创建 `.vscode/mcp.json`：
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "bailian-image": {
-        "command": "uvx",
-        "args": [
-          "--from",
-          "bailian-imagegen-mcp-edited",
-          "bailian-mcp-server"
-        ],
-        "env": {
-            "DASHSCOPE_API_KEY": "sk-your-real-api-key"
-        }
-      }
-    }
-  }
-}
-```
-
-## 开发与调试
-
-如果您从源码运行：
-
-```bash
-# 安装依赖
-pip install -e .
-
-# 1. Stdio 模式运行 (默认，本地使用)
-python bailian_mcpserver.py
-
-# 2. HTTP/SSE 模式运行 (用于服务器远程部署)
-# 如果设置了 MCP_ACCESS_TOKEN，服务将受到鉴权保护
-python bailian_mcpserver.py --http --port 8000
-```
-
-### 远程连接配置
-当您在服务器部署并开启鉴权后，其他 MCP 客户端连接时需要配置 Header：
+在支持 MCP SSE 连接的客户端中，使用以下配置格式：
 
 ```json
 {
   "mcpServers": {
     "bailian-image-remote": {
-      "command": "curl",
-      "args": [
-        "-H", "Authorization: Bearer your_custom_secret_token",
-        "http://your-server-ip:8000/mcp"
-      ]
+      "type": "sse",
+      "url": "http://your-server-ip:8000/sse",
+      "headers": {
+        "Authorization": "Bearer YOUR_CUSTOM_TOKEN"
+      }
     }
   }
 }
 ```
-*(注意：具体客户端的配置方式可能有所不同，部分网关支持在 URL 后接参数或通过特定的环境变量传递 Token)*
 
-### 调试
-使用 MCP Inspector 进行调试：
+> **注意**：如果未设置 `MCP_ACCESS_TOKEN`，则不需要 `headers` 字段。接入点路径必须是 `/sse`。
+
+## 开发者调试
+
+使用本地测试脚本验证连接性：
 ```bash
-npx @modelcontextprotocol/inspector python bailian_mcpserver.py
+python tests/local_test.py
 ```
 
 ## 许可证
-MIT License
+MIT
