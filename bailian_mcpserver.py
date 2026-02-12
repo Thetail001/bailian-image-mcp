@@ -200,6 +200,7 @@ def main():
             logger.warning("No MCP_ACCESS_TOKEN set. Service is UNPROTECTED.")
 
         logger.info(f"Serving MCP-over-SSE on port {port}")
+        logger.info(f"SSE endpoint: http://0.0.0.0:{port}/sse")
         uvicorn.run(app, host="0.0.0.0", port=port)
     else:
         logger.info("Serving MCP-over-Stdio")
