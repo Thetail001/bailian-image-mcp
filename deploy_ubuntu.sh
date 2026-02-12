@@ -52,7 +52,7 @@ if [ -f ".env" ] && [ -d "venv" ]; then
     case $choice in
         1)
             echo -e "${YELLOW}--- 正在检查更新... ---${NC}"
-            $UV_BIN pip install -i https://pypi.org/simple --upgrade $PACKAGE_NAME
+            VIRTUAL_ENV=venv $UV_BIN pip install -i https://pypi.org/simple --upgrade $PACKAGE_NAME
             systemctl restart $SERVICE_NAME
             echo -e "${GREEN}升级完成并已重启。${NC}"
             exit 0
@@ -79,7 +79,7 @@ echo -e "${YELLOW}--- 正在构建隔离的 Python 3.10+ 环境 (通过 uv) ---$
 $UV_BIN venv --python 3.10 venv
 
 echo -e "${YELLOW}--- 安装程序包 ---${NC}"
-$UV_BIN pip install -i https://pypi.org/simple $PACKAGE_NAME uvicorn
+VIRTUAL_ENV=venv $UV_BIN pip install -i https://pypi.org/simple $PACKAGE_NAME uvicorn
 
 # 7. 写入配置
 cat <<EOF > .env
